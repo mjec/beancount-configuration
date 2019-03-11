@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from beancount.ingest.importer import ImporterProtocol
-from beancount.ingest.importers.mixins import identifier
+from beancount.ingest.importers.mixins import identifier, filing
 from beancount.core import data, flags, number
 from beancount.utils.date_utils import parse_date_liberally
 
@@ -54,7 +54,7 @@ RowFields['Group Name'] = 'group_name'
 Row = namedtuple('Row', RowFields.values())
 
 
-class Importer(identifier.IdentifyMixin, ImporterProtocol):
+class Importer(identifier.IdentifyMixin, filing.FilingMixin, ImporterProtocol):
     '''
     Importer for Amazon Items reports.
     Create a new "Items" report at https://www.amazon.com/gp/b2b/reports and
@@ -70,7 +70,6 @@ class Importer(identifier.IdentifyMixin, ImporterProtocol):
     expense_account = None
     tags = {'amazon-purchase'}
     currency_symbols = {'$', '€', '£'}  # I know, very English-centric
-    prefix = None
     debug = False
 
     def __init__(
@@ -80,9 +79,9 @@ class Importer(identifier.IdentifyMixin, ImporterProtocol):
             expense_account=None,
             tags={},
             currency_symbols={},
-            prefix=None,
+            prefix='Amazon',
             debug=False,
-            ** kwargs):
+            **kwargs):
         '''
         Create an importer for Amazon Items reports. Available keyword
         arguments:
@@ -93,16 +92,20 @@ class Importer(identifier.IdentifyMixin, ImporterProtocol):
                             if None, unbalanced transactions will be printed).
             tags            a set of tags to add to every transaction.
             currency_symbols    a set of currency symbols to strip from input.
-            prefix          the filename prefix to use when renaming files.
+            prefix          the filename prefix to use when beancount-file
+                            moves files (defaults to "Amazon").
             debug           if True, every row will be printed to stdout.
+        Additional keyword arguments for IdentifyMixin and FilingMixin are
+        permitted. Most significantly:
+            filing          the name of the account used to set the storage
+                            location for these files.
         '''
         self.funding_sources.update(funding_sources)
         self.expense_account = expense_account
         self.tags.update(tags)
         self.currency_symbols.update(currency_symbols)
-        self.prefix = prefix
         self.debug = debug
-        super().__init__(*args, **kwargs)
+        super().__init__(prefix=prefix, *args, **kwargs)
 
     def extract(self, file, existing_entries=None):
         transactions = []
@@ -117,9 +120,6 @@ class Importer(identifier.IdentifyMixin, ImporterProtocol):
 
         return transactions
 
-    def file_account(self, file):
-        return self.expense_account
-
     def file_date(self, file):
         max_date = None
         for _, row in self.get_rows(file):
@@ -127,10 +127,6 @@ class Importer(identifier.IdentifyMixin, ImporterProtocol):
             if max_date is None or parsed_date > max_date:
                 max_date = parsed_date
         return max_date
-
-    def file_name(self, file):
-        basename = path.basename(file.name)
-        return '.'.join(filter(None, [self.prefix, basename]))
 
     def get_rows(self, file):
         reader = csv.DictReader(open(file.name))
