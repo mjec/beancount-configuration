@@ -6,7 +6,6 @@ from beancount.core import data, flags, number
 from beancount.utils.date_utils import parse_date_liberally
 
 from collections import namedtuple, OrderedDict
-from os import path
 
 import csv
 
