@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from beancount.ingest.importer import ImporterProtocol
 from beancount.ingest.importers.mixins import identifier, filing
 from beancount.core import data, flags, number
@@ -76,7 +74,7 @@ class Importer(identifier.IdentifyMixin, filing.FilingMixin, ImporterProtocol):
             *args,
             funding_sources={},
             expense_account=None,
-            tags={},
+            tags=set(),
             currency_symbols={},
             prefix='Amazon',
             debug=False,
@@ -84,7 +82,7 @@ class Importer(identifier.IdentifyMixin, filing.FilingMixin, ImporterProtocol):
         '''
         Create an importer for Amazon Items reports. Available keyword
         arguments:
-            funding_source  a dict mapping the last four digits of a store card
+            funding_sources a dict mapping the last four digits of a store card
                             (or some other card/funding source identifier) to
                             its matching liability account.
             expense_account the account to offset every transaction against (or
