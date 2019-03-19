@@ -14,18 +14,26 @@ from .categorizers import CategorizerResult
 
 class RowBase(abc.ABC):
     required_fields = ('amount', 'description', 'date',)
+    _namedtuple = None
 
     @property
     @abc.abstractstaticmethod
     def row_fields_dict() -> dict:
         raise NotImplementedError
 
-    @property
     @classmethod
-    def as_namedtuple(cls):
-        for field in cls.required_fields:
-            cls.assert_field_exists(field)
-        return namedtuple(cls.__name__, cls.row_fields_dict.values())
+    def is_instance(cls, other):
+        cls.ensure_namedtuple()
+        return isinstance(other, cls._namedtuple)
+
+    @classmethod
+    def ensure_namedtuple(cls):
+        if cls._namedtuple is None:
+            for field in cls.required_fields:
+                cls.assert_field_exists(field)
+            cls._namedtuple = namedtuple(
+                cls.__name__,
+                cls.row_fields_dict.values())
 
     @classmethod
     def assert_field_exists(cls, field):
@@ -33,7 +41,8 @@ class RowBase(abc.ABC):
             f"Row must have a field called {field}"
 
     def __new__(cls, *args, **kwargs):
-        return cls.as_namedtuple(*args, **kwargs)
+        cls.ensure_namedtuple()
+        return cls._namedtuple(*args, **kwargs)
 
 
 class BankAccountBase(
@@ -190,5 +199,5 @@ class BankAccountBase(
             return data.Amount(D(row.amount), self.currency)
 
     def assert_is_row(self, row):
-        assert isinstance(row, self.row_class),\
+        assert self.row_class.is_instance(row),\
             "Row must be an instance of row class"
