@@ -13,7 +13,7 @@ RECEIPT_URL = 'https://www.amazon.com/gp/your-account/order-details?orderID={}'
 RowFields = OrderedDict()
 RowFields['Order Date'] = 'order_date'
 RowFields['Order ID'] = 'order_id'
-RowFields['Title'] = 'title'
+RowFields['Title'] = 'description'
 RowFields['Category'] = 'category'
 RowFields['ASIN/ISBN'] = 'asin_or_isbn'
 RowFields['UNSPSC Code'] = 'unspsc'
@@ -149,7 +149,7 @@ class Importer(identifier.IdentifyMixin, filing.FilingMixin, ImporterProtocol):
             parse_date_liberally(row.order_date),
             flags.FLAG_WARNING if len(postings) == 0 else flags.FLAG_OKAY,
             row.seller.strip(),
-            row.title.strip(),
+            row.description.strip(),
             self.tags,
             data.EMPTY_SET,  # links
             postings)

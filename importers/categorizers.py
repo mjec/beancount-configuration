@@ -8,23 +8,6 @@ CategorizerResult = namedtuple(
     defaults=[None, None, set(), None])
 
 
-def C(pattern, account_name, **kwargs):
-    '''
-    Make a categorizer that returns the given account when the given regular
-    expression is matched. All CategorizerResult fields except acocunt are
-    valid keyword arguments.
-    '''
-    assert account.is_valid(account_name),\
-        "{} is not a valid account".format(account_name)
-
-    def f(description):
-        if re.search(pattern, description, re.IGNORECASE) is not None:
-            return CategorizerResult(account=account_name, **kwargs)
-        return None
-
-    return f
-
-
 def merge_categorizer_results(left, right):
     '''Returns the union of left and right'''
     replacements = {}
@@ -46,3 +29,35 @@ def merge_categorizer_results(left, right):
 
 
 CategorizerResult.merge = merge_categorizer_results
+
+
+def C(
+        pattern,
+        account_name,
+        field_name='description',
+        row_must_have_field=True,
+        **kwargs):
+    '''
+    Make a categorizer that returns the given account when the given regular
+    expression is matched on the row's $field_name field (defaults to
+    description). All CategorizerResult fields except account are valid keyword
+    arguments.
+    '''
+
+    assert 'account' not in kwargs,\
+        "'account' is not permitted as a keyword argument"
+
+    assert account.is_valid(account_name),\
+        "{} is not a valid account".format(account_name)
+
+    def f(row):
+        row = row._asdict()
+        if row_must_have_field:
+            assert field_name in row,\
+                f'Row used for categorizer must have a {field_name} field'
+
+        if re.search(pattern, row[field_name], re.IGNORECASE) is not None:
+            return CategorizerResult(account=account_name, **kwargs)
+        return None
+
+    return f

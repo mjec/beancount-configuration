@@ -1,3 +1,5 @@
+from beancount.utils.date_utils import parse_date_liberally
+
 from collections import OrderedDict
 
 from ..bank_account import BankAccountBase, RowBase
@@ -5,27 +7,27 @@ from ..bank_account import BankAccountBase, RowBase
 
 class Row(RowBase):
     row_fields_dict = OrderedDict([
-        ('Date', 'date'),
-        ('Time', 'time'),
-        ('Amount', 'amount'),
-        ('Type', 'type'),
+        ('Transaction Date', 'transaction_date'),
+        ('Post Date', 'date'),
         ('Description', 'description'),
+        ('Category', 'category'),
+        ('Type', 'type'),
+        ('Amount', 'amount'),
     ])
 
 
 class Importer(BankAccountBase):
     '''
-    Importer for Ally Bank account exports.
+    Importer for Chase Bank account exports.
     '''
 
     account = None
     currency = 'USD'
-    tags = set()
-    debug = False
+    prefix = 'Chase'
     row_class = Row
 
     def get_extra_metadata(self, row):
         self.assert_is_row(row)
         return {
-            'time': row.time,
+            'purchase_date': parse_date_liberally(row.transaction_date),
         }
