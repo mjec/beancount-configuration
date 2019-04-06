@@ -1,19 +1,6 @@
 from beancount.utils.date_utils import parse_date_liberally
 
-from collections import OrderedDict
-
-from ..bank_account import BankAccountBase, RowBase
-
-
-class Row(RowBase):
-    row_fields_dict = OrderedDict([
-        ('Transaction Date', 'transaction_date'),
-        ('Post Date', 'date'),
-        ('Description', 'description'),
-        ('Category', 'category'),
-        ('Type', 'type'),
-        ('Amount', 'amount'),
-    ])
+from ..bank_account import BankAccountBase, make_row_class
 
 
 class Importer(BankAccountBase):
@@ -21,10 +8,15 @@ class Importer(BankAccountBase):
     Importer for Chase Bank account exports.
     '''
 
-    account = None
-    currency = 'USD'
     prefix = 'Chase'
-    row_class = Row
+    row_class = make_row_class([
+        ('Transaction Date', 'transaction_date'),
+        ('Post Date', 'date'),
+        ('Description', 'description'),
+        ('Category', 'category'),
+        ('Type', 'type'),
+        ('Amount', 'amount'),
+    ])
 
     def get_extra_metadata(self, row):
         self.assert_is_row(row)

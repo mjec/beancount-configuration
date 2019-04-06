@@ -1,6 +1,6 @@
 import abc
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 
 from beancount.ingest.importer import ImporterProtocol
 from beancount.ingest.importers.mixins import identifier, filing
@@ -12,37 +12,26 @@ from .mixins import CategorizerMixin, CsvMixin
 from .categorizers import CategorizerResult
 
 
-class RowBase(abc.ABC):
+def make_row_class(fields):
+    '''
+    Takes a list of 2-tuples, where the first element is the column
+    name in the CSV, and the second element is the field name on the
+    final class. The amount, description and date fields must be
+    defined.
+    '''
+
     required_fields = ('amount', 'description', 'date',)
-    _namedtuple = None
 
-    @property
-    @abc.abstractstaticmethod
-    def row_fields_dict() -> dict:
-        raise NotImplementedError
+    fields_dict = OrderedDict(fields)
 
-    @classmethod
-    def is_instance(cls, other):
-        cls.ensure_namedtuple()
-        return isinstance(other, cls._namedtuple)
-
-    @classmethod
-    def ensure_namedtuple(cls):
-        if cls._namedtuple is None:
-            for field in cls.required_fields:
-                cls.assert_field_exists(field)
-            cls._namedtuple = namedtuple(
-                cls.__name__,
-                cls.row_fields_dict.values())
-
-    @classmethod
-    def assert_field_exists(cls, field):
-        assert field in cls.row_fields_dict.values(),\
+    for field in required_fields:
+        assert field in fields_dict.values(),\
             f"Row must have a field called {field}"
 
-    def __new__(cls, *args, **kwargs):
-        cls.ensure_namedtuple()
-        return cls._namedtuple(*args, **kwargs)
+    Row = namedtuple('Row', fields_dict.values())
+    Row.row_fields_dict = fields_dict
+
+    return Row
 
 
 class BankAccountBase(
@@ -52,31 +41,26 @@ class BankAccountBase(
         filing.FilingMixin,
         ImporterProtocol,
         abc.ABC):
+    '''
+    Abstract base class for bank account CSV importers. You must define
+    the row_class property to be an object which represents a single
+    row of the CSV.
+    You must either define the account property or pass it into the
+    constructor. Either way it must be a valid beancount account.
+    '''
 
+    row_class = None
+    account = None
+    currency = 'USD'
     prefix = None
     tags = set()
     debug = False
     invert_amounts = False
 
     @property
-    @abc.abstractmethod
-    def account(self):
-        raise NotImplementedError
-
-    @property
-    @abc.abstractmethod
-    def currency(self):
-        raise NotImplementedError
-
-    @property
     def row_fields(self):
         if hasattr(self.row_class, 'row_fields_dict'):
             return self.row_class.row_fields_dict
-        raise NotImplementedError
-
-    @property
-    @abc.abstractmethod
-    def row_class(self):
         raise NotImplementedError
 
     def get_extra_metadata(self, row):
@@ -119,8 +103,8 @@ class BankAccountBase(
                             a file as one for which this importer should be
                             used.
         '''
-        assert issubclass(self.row_class, RowBase),\
-            'row_class must be subclass of RowBase'
+        assert self.row_class is not None,\
+            "The row_class property must be defined."
 
         self.account = account or self.account
         self.currency = currency or self.currency
@@ -160,7 +144,7 @@ class BankAccountBase(
     def file_date(self, file):
         max_date = None
         for _, row in self.get_rows(file):
-            parsed_date = parse_date_liberally(row.order_date)
+            parsed_date = parse_date_liberally(row.date)
             if max_date is None or parsed_date > max_date:
                 max_date = parsed_date
         return max_date
@@ -199,5 +183,5 @@ class BankAccountBase(
             return data.Amount(D(row.amount), self.currency)
 
     def assert_is_row(self, row):
-        assert self.row_class.is_instance(row),\
+        assert isinstance(row, self.row_class),\
             "Row must be an instance of row class"
