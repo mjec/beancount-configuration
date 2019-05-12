@@ -5,6 +5,7 @@ import re
 import requests
 import shelve
 import tempfile
+import pytz
 
 
 def now():
@@ -56,3 +57,11 @@ class AlphaVantageBase(abc.ABC):
                 db['expiry'] = now() + (3600 * 24)
                 db['result'] = self.direct_request(function, ticker).json()
             return db.get('result')
+
+    def get_timezone(self, tz):
+        try:
+            return pytz.timezone(tz)
+        except pytz.exceptions.UnknownTimeZoneError:
+            if 'Etc/' + tz in pytz.all_timezones_set:
+                return pytz.timezone('Etc/' + tz)
+            return pytz.timezone('UTC')
