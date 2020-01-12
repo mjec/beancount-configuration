@@ -83,7 +83,7 @@ class BankAccountBase(
             currency        the account currency (defaults to "USD").
             tags            a set of tags to add to every transaction.
             prefix          the filename prefix to use when beancount-file
-                            moves files (defaults to "Chase").
+                            moves files.
             debug           if True, every row will be printed to stdout.
         Additional keyword arguments for CategorizerMixin, IdentifyMixin and
         FilingMixin are permitted. Most significantly:

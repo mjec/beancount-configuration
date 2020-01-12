@@ -21,5 +21,5 @@ class Importer(BankAccountBase):
     def get_extra_metadata(self, row):
         self.assert_is_row(row)
         return {
-            'purchase_date': parse_date_liberally(row.transaction_date),
+            'purchase-date': parse_date_liberally(row.transaction_date),
         }

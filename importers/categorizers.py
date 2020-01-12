@@ -56,7 +56,7 @@ def C(
             assert field_name in row,\
                 f'Row used for categorizer must have a {field_name} field'
 
-        if re.search(pattern, row[field_name], re.IGNORECASE) is not None:
+        if re.search(pattern, row.get(field_name, ''), re.IGNORECASE) is not None:
             return CategorizerResult(account=account_name, **kwargs)
         return None
 

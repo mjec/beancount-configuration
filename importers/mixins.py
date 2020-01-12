@@ -11,13 +11,22 @@ class CategorizerMixin():
         self.categorizers.extend(categorizers)
         super().__init__(*args, **kwargs)
 
+    def get_amount(self, row):
+        raise NotImplementedError
+
+    def get_account(self, row):
+        return self.account
+
+    def get_price(self, row):
+        return None
+
     def get_categorized_postings(self, row):
         postings = [
             data.Posting(
-                account=self.account,
+                account=self.get_account(row),
                 units=self.get_amount(row),
                 cost=None,
-                price=None,
+                price=self.get_price(row),
                 flag=None,
                 meta={}),
         ]
@@ -45,7 +54,7 @@ class CategorizerMixin():
                 account=result.account,
                 units=-self.get_amount(row),
                 cost=None,
-                price=None,
+                price=self.get_price(row),
                 flag=None,
                 meta={}))
 
