@@ -1,4 +1,6 @@
-from collections import namedtuple, OrderedDict
+import json
+
+from copy import deepcopy
 
 from beancount.utils.date_utils import parse_date_liberally
 from beancount.ingest.importer import ImporterProtocol
@@ -6,109 +8,83 @@ from beancount.ingest.importers.mixins import identifier, filing
 from beancount.core import data, flags, account as beancount_account
 from beancount.core.number import D
 
-from ..mixins import CsvMixin
-from ..categorizers import CategorizerResult
 
-
-row_fields = OrderedDict([
-    ('Claim Number', 'claim_number'),
-    ('Patient Name', 'patient'),
-    ('Date Visited', 'visit_date'),
-    ('Visited Provider', 'provider'),
-    ('Claim Type', 'claim_type'),
-    ('Claim Status', 'claim_status'),
-    ('Payment Status', 'payment_status'),
-    ('Date Processed', 'date'),
-    ('Amount Billed', 'amount_billed'),
-    ('Deductible', 'amount_deductible'),
-    ('Your Plan', 'amount_plan_paid'),
-    ('Plan Discount', 'amount_plan_discount'),
-    ('Your Responsibility', 'amount_responsible'),
-    ('Paid at Visit/Pharmacy', 'amount_paid_at_visit'),
-    ('You Owe', 'amount_owed'),
-    ('Flagged To Watch', 'flagged_to_watch'),
-    ('Marked as Paid', 'marked_as_paid'),
-])
-Row = namedtuple('Row', row_fields.values())
-
-
-class Importer(CsvMixin,
-               identifier.IdentifyMixin,
+class Importer(identifier.IdentifyMixin,
                filing.FilingMixin,
                ImporterProtocol):
     '''
     Importer for UHC claims exports.
     '''
 
-    account_formats = {
-        'deductible': 'Equity:Virtual:{prefix}:'
-    }
-    currency = 'USD'
     prefix = 'UHC'
     tags = set()
+    narration_format = 'UHC claim for {providerName} services'\
+        ' to {patientName} on {visitDate:%b %d, %Y}'
+    link_format = "uhc-claim-{claimId}"
+    reimbursement_account = "Income:Health-Insurance:Reimbursements"
+    discount_account = "Income:Health-Insurance:Discounts"
     debug = False
 
     def __init__(
             self,
             *args,
-            patient_to_subaccount={},
-            account=None,
-            currency=None,
+            reimbursement_account=None,
+            discount_account=None,
             prefix=None,
             tags=set(),
             debug=False,
-            invert_amounts=None,
             **kwargs):
         '''
         Available keyword arguments:
-            account         the account to use for every transaction.
-            currency        the account currency (defaults to "USD").
-            tags            a set of tags to add to every transaction.
-            prefix          the filename prefix to use when beancount-file
-                            moves files (defaults to "UHC").
-            debug           if True, every row will be printed to stdout.
+            reimbursement_account   the income account to use for
+                             reimbursements and filing (unless filing is
+                             passed in as a keyword argument).
+            discount_account the income account to use for discounts.
+            tags             a set of tags to add to every transaction.
+            prefix           the filename prefix to use when beancount-file
+                             moves files (defaults to "UHC").
+            debug            if True, every row will be printed to stdout.
         Additional keyword arguments for IdentifyMixin and FilingMixin are
         permitted. Most significantly:
-            matchers        a list of 2-tuples, where the first item is one of
-                            "mime", "filename", or "content"; and the second is
-                            a regular expression which, if matched, identifies
-                            a file as one for which this importer should be
-                            used.
+            matchers         a list of 2-tuples, where the first item is one of
+                             "mime", "filename", or "content"; and the second
+                             is a regular expression which, if matched,
+                             identifies a file as one for which this importer
+                             should be used.
         '''
-        self.account = account or self.account
-        self.currency = currency or self.currency
+        self.reimbursement_account = reimbursement_account \
+            or self.reimbursement_account
+        self.discount_account = discount_account or self.discount_account
         self.tags.update(tags)
 
         if debug is not None:
             self.debug = debug
 
-        assert beancount_account.is_valid(self.account),\
-            "{} is not a valid account".format(self.account)
+        assert beancount_account.is_valid(self.reimbursement_account),\
+            "{} is not a valid account".format(self.reimbursement_account)
+        assert beancount_account.is_valid(self.discount_account),\
+            "{} is not a valid account".format(self.discount_account)
 
         super().__init__(
             *args,
             prefix=prefix or self.prefix,
-            filing=self.account,
-            row_fields=row_fields,
-            row_class=Row,
+            filing=kwargs.get('filing', None) or self.reimbursement_account,
             **kwargs
-        )
-
-    def format_account(self, row):
-        '{type}:{virtual}'
-        return self.account_format.format(
-
         )
 
     def extract(self, file, existing_entries=None):
         transactions = []
-
-        for row_number, row in self.get_rows(file):
+        with open(file.name, "r") as fp:
+            rows = json.load(fp)['claims']
+        row_number = 0
+        for row in rows:
+            row_number += 1
             if self.debug:
                 print("Row #{}: {}".format(row_number, row))
             transactions.extend(self.get_transactions_from_row(
                 row, file.name, row_number, existing_entries))
         transactions.sort(key=lambda t: t.date)
+        return transactions
 
     def get_transactions_from_row(
             self,
@@ -116,41 +92,60 @@ class Importer(CsvMixin,
             file_name,
             row_number,
             existing_entries=None):
-        self.assert_is_row(row)
 
-        postings, categorizer_result = self.get_categorized_postings(row)
+        flag = flags.FLAG_WARNING
 
-        if categorizer_result is None:
-            # Make a dummy result to avoid having NoneType errors
-            categorizer_result = CategorizerResult(self.account)
+        formatted_row = deepcopy(row)
 
-        if len(postings) != 2:
-            flag = flags.FLAG_WARNING
-        else:
-            flag = categorizer_result.flag or flags.FLAG_OKAY
+        formatted_row['visitDate'] = parse_date_liberally(row['serviceDate'])
+
+        formatted_row['patientName'] = '{} {}'.format(
+            row['serviceRecipient']['firstName'],
+            row['serviceRecipient']['lastName'])
 
         metadata = {
-            'claim-number': row.claim_number,
+            'claim-number': row['claimId'],
+            'claim-type': row['claimType'],
+            'patient': formatted_row['patientName'],
+            'provider': row['providerName'],
+            'visit-date': formatted_row['visitDate'],
         }
-        for existing_txn in existing_entries or []:
-            if row.claim_number and \
-                    row.claim_number == existing_txn.meta.get('claim-number'):
-                metadata['__duplicate__'] = True
+
+        postings = []
+        if row['balance']['healthPlanPays']['value'] != "0.00":
+            postings.append(data.Posting(
+                account=self.reimbursement_account,
+                units=data.Amount(D(row['balance']['healthPlanPays']['value']),
+                                  row['balance']['healthPlanPays']['iso4217']),
+                cost=None,
+                price=None,
+                flag=None,
+                meta={}))
+
+        if row['balance']['healthPlanDiscount']['value'] != "0.00":
+            postings.append(data.Posting(
+                account=self.discount_account,
+                units=data.Amount(
+                    D(row['balance']['healthPlanDiscount']['value']),
+                    row['balance']['healthPlanDiscount']['iso4217']),
+                cost=None,
+                price=None,
+                flag=None,
+                meta={}))
+
+        if not postings or formatted_row['visitDate'] > parse_date_liberally('2019-12-31'):
+            return []
 
         return [
             data.Transaction(  # pylint: disable=not-callable
                 data.new_metadata(file_name,
                                   row_number,
                                   metadata),
-                parse_date_liberally(row.date),
+                parse_date_liberally(row['processedDate']),
                 flag,
-                categorizer_result.payee,
-                categorizer_result.narration or row.description,
-                self.tags | categorizer_result.tags,
-                data.EMPTY_SET,  # links
+                "United Healthcare",
+                self.narration_format.format(**formatted_row),
+                self.tags,
+                set([self.link_format.format(**row)]),  # links
                 postings)
         ]
-
-    def assert_is_row(self, row):
-        assert isinstance(row, Row),\
-            "Row must be an instance of row class"
